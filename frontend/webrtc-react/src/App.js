@@ -1,27 +1,66 @@
-
 import React, { useEffect, useState, useRef } from "react";
-// import "./styles.css";
+
+const getMediaAccess = async () => {
+  let mediaDevices;
+  try {
+    mediaDevices = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: true,
+    });
+    return mediaDevices;
+  } catch (e) {
+    console.log("Failed to get media devices");
+    return null;
+  }
+};
 
 export default function App() {
-  let videoElement = useRef(null);
-  let localMediaStream = useRef(null);
-  let remoteVideoElement = useRef(null);
-  const client = useState({});
-  let myPeerConnection = useRef(null);
-
-  const decode = (data) => JSON.parse(data);
-  const encode = (data) => JSON.stringify(data);
-
-  const generateClientId = () => {
+  const singalUrl = "wss://b68619b3216c.ngrok.io";
+  const [clientId, setClientId] = useState(() => {
     function s4() {
       return Math.floor((1 + Math.random()) * 0x10000)
         .toString(16)
         .substring(1);
     }
     return s4() + s4() + "-" + s4();
-  };
+  });
+  const [state, setState] = useState({
+    client: null,
+    mediaDevices: null,
+    localTracks: null,
+    myPeerConnection: null,
+    remoteVideoElement: null,
+    videoElement: null,
+  });
 
-  //  // /// // // WEBRTC CLIENT METHODS // // /// // //
+  useEffect(() => {
+    (async () => {
+      console.log("Starting\n Getting Media Access");
+      const mediaDevices = await getMediaAccess();
+      const tracks = mediaDevices.getTracks();
+      const client = new WebSocket(singalUrl);
+      const remoteVideoElement = document.getElementById("rcvdoelement");
+      const videoElement = document.getElementById("vdoelement");
+      const myPeerConnection = await createPeerConnection();
+      videoElement.srcObject = mediaDevices;
+      setState({
+        client: client,
+        mediaDevices: mediaDevices,
+        localTracks: tracks,
+        remoteVideoElement: remoteVideoElement,
+        videoElement: videoElement,
+        myPeerConnection: myPeerConnection,
+      });
+    })();
+  }, []);
+
+  function sendData(eventType, data) {
+    console.log("send data called", state.client);
+    state.client.send(encode({ type: eventType, data: { ...data } }));
+  }
+
+  const decode = (data) => JSON.parse(data);
+  const encode = (data) => JSON.stringify(data);
 
   const handleIncomingMessge = (message) => {
     const data = decode(message.data);
@@ -46,73 +85,111 @@ export default function App() {
     }
   };
 
-  const sendData = (eventType, data) =>
-    client?.socket?.send(encode({ type: eventType, data: { ...data } }));
+  function createPeerConnection() {
+    return new Promise((resolve, reject) => {
+      const my = new RTCPeerConnection({});
+      resolve(my);
+    });
+  }
+
+  function addPeerConnectionHandlers() {
+    state.myPeerConnection.onicecandidate = handleIceCandidate;
+    state.myPeerConnection.ontrack = handleTrackEvent;
+    state.myPeerConnection.onremovetrack = handleRemoveTrack;
+    state.myPeerConnection.onnegotiationneeded = handleNegotiationNeeded;
+    state.myPeerConnection.oniceconnectionstatechange = handleIceConnectionStateChange;
+    state.myPeerConnection.onicegatheringstatechange = handleIceGatheringStateChange;
+    state.myPeerConnection.onsignalingstatechange = handleSignalSteteChange;
+  }
+
+  const invite = async () => {
+    addPeerConnectionHandlers();
+    state.localTracks.forEach((track) =>
+      state.myPeerConnection.addTrack(track, state.mediaDevices)
+    );
+  };
+
+  const handleIncomingCall = async (data) => {
+    let stream = state.mediaDevices;
+    console.log("inside handleIncoming data: ", data.data);
+    addPeerConnectionHandlers();
+    const remoteSessionDescription = new RTCSessionDescription(data.data.sdp);
+    await state.myPeerConnection.setRemoteDescription(remoteSessionDescription);
+    state.localTracks.forEach((track) =>
+      state.myPeerConnection.addTrack(track, stream)
+    );
+    const answer = await state.myPeerConnection.createAnswer();
+    await state.myPeerConnection.setLocalDescription(answer);
+    sendData("answer", {
+      id: clientId,
+      sdp: state.myPeerConnection.localDescription,
+    });
+  };
 
   const handleAnswer = async (data) => {
     console.log("Inside handle Answer", data.data);
     const answer = data.data.sdp;
     const remoteDescription = new RTCSessionDescription(answer);
-    await myPeerConnection
+    await state.myPeerConnection
       .setRemoteDescription(remoteDescription)
       .catch((error) => console.log("error in handling answer", error));
   };
 
   const handleNewIceCandidate = (data) => {
     const candidate = new RTCIceCandidate(data.data.candidate);
-    myPeerConnection
+    state.myPeerConnection
       .addIceCandidate(candidate)
       .catch("Error in adding ICE Candidate");
   };
 
-  const hangUp = () => {
-    closeCall();
-    sendData("hangUp", { id: client.id });
-  };
+  const closeCall = () => {
+    if (state.myPeerConnection) {
+      state.myPeerConnection.ontrack = null;
+      state.myPeerConnection.onremovetrack = null;
+      state.myPeerConnection.onremovestream = null;
+      state.myPeerConnection.onicecandidate = null;
+      state.myPeerConnection.oniceconnectionstatechange = null;
+      state.myPeerConnection.onsignalingstatechange = null;
+      state.myPeerConnection.onicegatheringstatechange = null;
+      state.myPeerConnection.onnegotiationneeded = null;
 
-  const closeCall = (myPeerConnection) => {
-    if (myPeerConnection) {
-      myPeerConnection.ontrack = null;
-      myPeerConnection.onremovetrack = null;
-      myPeerConnection.onremovestream = null;
-      myPeerConnection.onicecandidate = null;
-      myPeerConnection.oniceconnectionstatechange = null;
-      myPeerConnection.onsignalingstatechange = null;
-      myPeerConnection.onicegatheringstatechange = null;
-      myPeerConnection.onnegotiationneeded = null;
-      if (remoteVideoElement.srcObject) {
-        remoteVideoElement.srcObject
+      if (state.remoteVideoElement.srcObject) {
+        state.remoteVideoElement.srcObject
           .getTracks()
           .forEach((track) => track.stop());
       }
-      if (videoElement.srcObject) {
-        videoElement.srcObject.getTracks().forEach((track) => track.stop());
+
+      if (state.videoElement.srcObject) {
+        state.videoElement.srcObject
+          .getTracks()
+          .forEach((track) => track.stop());
       }
 
-      myPeerConnection.close();
-      myPeerConnection = null;
+      state.myPeerConnection.close();
+      state.myPeerConnection = null;
     }
-    remoteVideoElement.removeAttribute("src");
-    remoteVideoElement.removeAttribute("srcObject");
-    videoElement.removeAttribute("src");
-    remoteVideoElement.removeAttribute("srcObject");
+
+    state.remoteVideoElement.removeAttribute("src");
+    state.remoteVideoElement.removeAttribute("srcObject");
+    state.videoElement.removeAttribute("src");
+    state.remoteVideoElement.removeAttribute("srcObject");
   };
 
-  // let myPeerConnection = new RTCPeerConnection();
-
-  //                                    //
-  //                                    //
-  // MYPEERCONNECTION HANDELRS START    //
-  //                                    //
-  //                                    //
+  const hangUp = () => {
+    closeCall();
+    sendData("hangUp", { id: clientId });
+  };
 
   const handleNegotiationNeeded = async () => {
-    const offer = await myPeerConnection.createOffer();
-    await myPeerConnection.setLocalDescription(offer);
+    console.log("inside handleNegotiated Needed", state.myPeerConnection);
+    console.log(state.myPeerConnection);
+    const offer = await state.myPeerConnection.createOffer();
+    await state.myPeerConnection.setLocalDescription(offer);
     sendData("offer", {
-      id: client.id,
-      sdp: myPeerConnection.localDescription,
+      id: clientId,
+      sdp: state.myPeerConnection.localDescription,
     });
+    console.log("exiting handleNegotiated Needed");
   };
 
   const handleIceCandidate = (event) => {
@@ -123,13 +200,12 @@ export default function App() {
 
   const handleTrackEvent = (event) => {
     // console.log("loggingevent",event.streams);
-    remoteVideoElement.srcObject = event.streams[0];
+    state.remoteVideoElement.srcObject = event.streams[0];
   };
 
   const handleRemoveTrack = (event) => {
-    const stream = remoteVideoElement.srcObject;
+    const stream = state.remoteVideoElement.srcObject;
     const tracks = stream.getTracks();
-
     if (!tracks.lenght) {
       closeCall();
     }
@@ -155,82 +231,19 @@ export default function App() {
     console.log(event);
   };
 
-  const handleIncomingCall = async (data) => {
-    // console.log("inside handleIncoming data: ",data.data);
-    myPeerConnection =await createPeerConnection();
-    const remoteSessionDescription = new RTCSessionDescription(data.data.sdp);
-    await myPeerConnection.setRemoteDescription(remoteSessionDescription);
-    addStream(localMediaStream, myPeerConnection);
-    const answer = await myPeerConnection.createAnswer();
-    await myPeerConnection.setLocalDescription(answer);
-    sendData("answer", {
-      id: client.id,
-      sdp: myPeerConnection.localDescription,
-    });
-  };
-
-  const getMediaAccess = async () => {
-    let mediaDevices;
-    try {
-      mediaDevices = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: true,
-      });
-
-      return mediaDevices;
-    } catch (e) {
-      console.log("Failed to get media devices");
-      return null;
-    }
-  };
-
-  const addStream = (stream) => {
-    videoElement.srcObject = stream;
-    stream
-      .getTracks()
-      .forEach((track) => myPeerConnection.addTrack(track, stream));
-  };
-
-  function createPeerConnection() {
-    return new Promise((resolve, reject) => {
-      const my = new RTCPeerConnection({});
-      my.onicecandidate = handleIceCandidate;
-      my.ontrack = handleTrackEvent;
-      my.onremovetrack = handleRemoveTrack;
-      my.onnegotiationneeded = handleNegotiationNeeded;
-      my.oniceconnectionstatechange = handleIceConnectionStateChange;
-      my.onicegatheringstatechange = handleIceGatheringStateChange;
-      my.onsignalingstatechange = handleSignalSteteChange;
-      resolve(my);
-    });
+  if (state.client) {
+    state.client.onmessage = handleIncomingMessge;
+    state.client.onopen = () => {
+      console.log("Connection Opened");
+      sendData("ready", {});
+    };
   }
-  const invite = async () => {
-    myPeerConnection = await createPeerConnection();
-    addStream(localMediaStream, myPeerConnection);
-  };
-
-  useEffect(() => {
-    (async () => {
-      console.log("starting");
-      videoElement = document.getElementById("vdoelement");
-      remoteVideoElement = document.getElementById("rcvdoelement");
-      localMediaStream = await getMediaAccess();
-      const newclient = new WebSocket("wss://fbc4bba97aff.ngrok.io");
-      client.socket = newclient;
-      newclient.onopen = () => {
-        console.log("Opened");
-        client.id = generateClientId();
-        sendData("ready", {});
-      };
-      newclient.onmessage = handleIncomingMessge;
-    })();
-  }, []);
 
   return (
     <div className="App">
       <h1>Video</h1>
       <video id={"vdoelement"} autoPlay></video>
-      <video id={"rcvdoelement"}></video>
+      <video id={"rcvdoelement"} autoPlay></video>
     </div>
   );
 }
