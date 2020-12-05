@@ -20,9 +20,9 @@ from gi.repository import GstSdp
 
 PIPELINE_DESC = '''
 webrtcbin name=sendrecv bundle-policy=max-bundle
- videotestsrc is-live=true pattern=ball ! videoconvert ! queue ! vp8enc deadline=1 ! rtpvp8pay !
+ v4l2src  ! videoconvert ! queue ! vp8enc deadline=1 ! rtpvp8pay !
  queue ! application/x-rtp,media=video,encoding-name=VP8,payload=97 ! sendrecv.
- audiotestsrc is-live=true wave=red-noise ! audioconvert ! audioresample ! queue ! opusenc ! rtpopuspay !
+ autoaudiosrc ! queue ! opusenc ! rtpopuspay !
  queue ! application/x-rtp,media=audio,encoding-name=OPUS,payload=96 ! sendrecv.
 '''
 
@@ -33,12 +33,13 @@ class WebRTCClient:
         self.pipe = None
         self.webrtc = None
         self.peer_id = peer_id
-        self.server = server or 'wss://150c4d2c9f9a.ngrok.io'
+        self.server = server or 'wss://298799d45d27.ngrok.io'
 
     async def connect(self):
         sslctx = ssl.create_default_context(purpose=ssl.Purpose.CLIENT_AUTH)
         self.conn = await websockets.connect(self.server, ssl=sslctx)
-        await self.conn.send('START')
+        msg = json.dumps({'type': 'ready'})
+        await self.conn.send(msg)
 
 
     async def setup_call(self):
@@ -47,7 +48,7 @@ class WebRTCClient:
     def send_sdp_offer(self, offer):
         text = offer.sdp.as_text()
         print ('Sending offer:\n%s' % text)
-        msg = json.dumps({'sdp': {'type': 'offer', 'sdp': text}})
+        msg = json.dumps({'type': 'offer', 'data':{'sdp':{'type':'offer','sdp':text}}})
         loop = asyncio.new_event_loop()
         loop.run_until_complete(self.conn.send(msg))
 
@@ -65,7 +66,7 @@ class WebRTCClient:
         element.emit('create-offer', None, promise)
 
     def send_ice_candidate_message(self, _, mlineindex, candidate):
-        icemsg = json.dumps({'ice': {'candidate': candidate, 'sdpMLineIndex': mlineindex}})
+        icemsg = json.dumps({'type':'newIceCandidate', 'data':{'candidate':{'candidate':candidate,'sdpMLineIndex': mlineindex}}})
         loop = asyncio.new_event_loop()
         loop.run_until_complete(self.conn.send(icemsg))
 
@@ -121,38 +122,37 @@ class WebRTCClient:
         self.pipe.set_state(Gst.State.PLAYING)
 
     async def handle_sdp(self, message):
+        print("\n")
+        print(message['type'],end="\n\n")
         assert (self.webrtc)
-        msg = json.loads(message)
-        if 'sdp' in msg:
-            print(msg['sdp']['sdp'])
-        #     sdp = msg['sdp']
-        #     assert(sdp['type'] == 'answer')
-        #     sdp = sdp['sdp']
-        #     print ('Received answer:\n%s' % sdp)
-        #     res, sdpmsg = GstSdp.SDPMessage.new()
-        #     GstSdp.sdp_message_parse_buffer(bytes(sdp.encode()), sdpmsg)
-        #     answer = GstWebRTC.WebRTCSessionDescription.new(GstWebRTC.WebRTCSDPType.ANSWER, sdpmsg)
-        #     promise = Gst.Promise.new()
-        #     self.webrtc.emit('set-remote-description', answer, promise)
-        #     promise.interrupt()
-        # elif 'ice' in msg:
-        #     ice = msg['ice']
-        #     candidate = ice['candidate']
-        #     sdpmlineindex = ice['sdpMLineIndex']
-        #     self.webrtc.emit('add-ice-candidate', sdpmlineindex, candidate)
+        msg = message
+        if message['type'] == 'answer':
+            sdp = msg['data']['sdp']
+            # print(sdp)
+            assert(sdp['type'] == 'answer')
+            sdp = sdp['sdp']
+            # print ('Received answer:\n%s' % sdp)
+            res, sdpmsg = GstSdp.SDPMessage.new()
+            GstSdp.sdp_message_parse_buffer(bytes(sdp.encode()), sdpmsg)
+            answer = GstWebRTC.WebRTCSessionDescription.new(GstWebRTC.WebRTCSDPType.ANSWER, sdpmsg)
+            promise = Gst.Promise.new()
+            self.webrtc.emit('set-remote-description', answer, promise)
+            promise.interrupt()
+        elif message['type'] == 'newIceCandidate':
+            ice = msg['data']
+            candidate = ice['candidate']
+            print(candidate)
+            sdpmlineindex = candidate['sdpMLineIndex']
+            self.webrtc.emit('add-ice-candidate', sdpmlineindex, candidate['candidate'])
 
     async def loop(self):
         assert self.conn
         async for message in self.conn:
-            message = json.parse(message)
+            message = json.loads(message)
             print(message['type'])
-            if message.type == 'ready':
+            if message['type'] == 'ready':
                 self.start_pipeline()
-            elif message.startswith('ERROR'):
-                print (message)
-                return 1
             else:
-                self.start_pipeline()
                 await self.handle_sdp(message)
         return 0
 
