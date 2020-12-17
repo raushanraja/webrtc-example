@@ -12,7 +12,7 @@ function s4() {
 }
 
 const sendData = (eventType, data, client) => {
-  console.log("send data:", data);
+  console.log("send data:", eventType);
   client.emit("data", encode({ type: eventType, data: { ...data } }));
 };
 
@@ -48,6 +48,15 @@ class PeerConnectionManager {
 
     // AddLocalTracks
     this.addLocalTracks = this.addLocalTracks.bind(this);
+
+
+
+    // VideoContainer && Element
+    
+    const videoContainer = document.getElementById("videoContainer");
+    const newVideoElement = document.createElement("video");
+    newVideoElement.id = this.pid + "video";
+    videoContainer.appendChild(newVideoElement);
   }
 
   addLocalTracks() {
@@ -57,7 +66,6 @@ class PeerConnectionManager {
   }
 
   addPeerConnectionHandler() {
-    console.log(this.pid);
     this.peerConnection.onicecandidate = this.handleIceCandidate;
     this.peerConnection.ontrack = this.handleTrackEvent;
     this.peerConnection.onresmovetrack = this.handleRemoveTrack;
@@ -69,6 +77,7 @@ class PeerConnectionManager {
 
   // Sending ICE Candidates
   handleIceCandidate(event) {
+    console.log('handleIceCandidate');
     // TODO: Check for the condition if error arises
     if (event.candidate)
       sendData("newIceCandidate", { candidate: event.candidate }, this.client);
@@ -76,15 +85,13 @@ class PeerConnectionManager {
 
   // Set Remote Media Track
   handleTrackEvent(event) {
-    const videoContainer = document.getElementById("videoContainer");
-    const newVideoElement = document.createElement("video");
-    newVideoElement.id = this.pid + "video";
+    const newVideoElement = document.getElementById(this.pid+"video");
     newVideoElement.srcObject = event.streams[0];
-    videoContainer.appendChild(newVideoElement);
   }
 
   // Remove Track when call is done
   handleRemoveTrack(event) {
+    console.log("handleRemoveTrack");
     const videoElement = document.getElementById(this.pid + "video");
     const stream = videoElement.srcObject;
     const tracks = stream.getTracks();
@@ -93,6 +100,7 @@ class PeerConnectionManager {
 
   // Handle Negotiation
   handleNegotiationNeeded() {
+    console.log('handleNegotiationNeeded');
     (async () => {
       const offer = await this.peerConnection.createOffer();
       await this.peerConnection.setLocalDescription(offer);
@@ -106,22 +114,25 @@ class PeerConnectionManager {
 
   // Hanlde Ice Connection State Change
   handleIceConnectionStateChange(event) {
-    console.log(event);
+    console.log("handleIceConnectionStateChange");
+    // console.log(event);
   }
 
   // Hanlde Ice Gathering State Change
   handleIceGatheringStateChange(event) {
-    console.log(event);
+    console.log("handleIceGatheringStateChange");
+    // console.log(event);
   }
 
   // Handle Signal State Change
   handleSignalSteteChange(event) {
-    console.log(event);
+    console.log("handleSignalStateChange");
+    // console.log(event);
   }
 }
 
 function App() {
-  const signlaURL = "wss://4cd17cc2bad9.ngrok.io";
+  const signlaURL = "wss://bf92b43aca82.ngrok.io";
   const peerConnectionArray = useRef([]);
   const latestPeerConnectionCount = useRef(0);
   const state = useRef({
@@ -200,7 +211,6 @@ function App() {
     );
     peerConnectionArray.current.push(pc);
     latestPeerConnectionCount.current += 1;
-    console.log(pc);
     pc.addPeerConnectionHandler();
     currentPC.current = pc.peerConnection;
 
