@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 
 const decode = (data) => JSON.parse(data);
 const encode = (data) => JSON.stringify(data);
-
+const currentTime = ()=> {let today  = new Date(); return today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();};
 function s4() {
   return Math.floor((1 + Math.random()) * 0x10000)
     .toString(16)
@@ -12,12 +12,12 @@ function s4() {
 }
 
 const sendData = (eventType, data, client) => {
-  console.log("send data:", eventType);
+  console.log(currentTime() +": send data:", eventType);
   client.emit("data", encode({ type: eventType, data: { ...data } }));
 };
 
 class PeerConnectionManager {
-  constructor(client, localTracks, mediaDevices) {
+  constructor(client, localTracks, mediaDevices,remoteId,pid) {
     this.peerConnection = new RTCPeerConnection();
 
     // PeerConnectionHandlers
@@ -44,7 +44,10 @@ class PeerConnectionManager {
     this.mediaDevices = mediaDevices;
 
     // PeerConnectionID
-    this.pid = s4() + s4() + "-" + s4();
+    this.pid = pid;
+    // Remote  PeerConnectionID
+    this.remoteId = remoteId;
+
 
     // AddLocalTracks
     this.addLocalTracks = this.addLocalTracks.bind(this);
@@ -55,7 +58,8 @@ class PeerConnectionManager {
     
     const videoContainer = document.getElementById("videoContainer");
     const newVideoElement = document.createElement("video");
-    newVideoElement.id = this.pid + "video";
+    newVideoElement.id = pid + "video";
+    newVideoElement.autoplay = true;
     videoContainer.appendChild(newVideoElement);
   }
 
@@ -77,10 +81,10 @@ class PeerConnectionManager {
 
   // Sending ICE Candidates
   handleIceCandidate(event) {
-    console.log('handleIceCandidate');
+    console.log(currentTime() +' handleIceCandidate');
     // TODO: Check for the condition if error arises
     if (event.candidate)
-      sendData("newIceCandidate", { candidate: event.candidate }, this.client);
+      sendData("newIceCandidate", { candidate: event.candidate,clientId:this.pid,remoteId:this.remoteId }, this.client);
   }
 
   // Set Remote Media Track
@@ -91,7 +95,7 @@ class PeerConnectionManager {
 
   // Remove Track when call is done
   handleRemoveTrack(event) {
-    console.log("handleRemoveTrack");
+    console.log(currentTime() +" handleRemoveTrack");
     const videoElement = document.getElementById(this.pid + "video");
     const stream = videoElement.srcObject;
     const tracks = stream.getTracks();
@@ -100,13 +104,13 @@ class PeerConnectionManager {
 
   // Handle Negotiation
   handleNegotiationNeeded() {
-    console.log('handleNegotiationNeeded');
+    console.log(currentTime() +' handleNegotiationNeeded');
     (async () => {
       const offer = await this.peerConnection.createOffer();
       await this.peerConnection.setLocalDescription(offer);
       sendData(
         "offer",
-        { sdp: this.peerConnection.localDescription },
+        { sdp: this.peerConnection.localDescription,clientId:this.pid,remoteId:this.remoteId },
         this.client
       );
     })();
@@ -114,25 +118,25 @@ class PeerConnectionManager {
 
   // Hanlde Ice Connection State Change
   handleIceConnectionStateChange(event) {
-    console.log("handleIceConnectionStateChange");
+    console.log(currentTime() +" handleIceConnectionStateChange");
     // console.log(event);
   }
 
   // Hanlde Ice Gathering State Change
   handleIceGatheringStateChange(event) {
-    console.log("handleIceGatheringStateChange");
+    console.log(currentTime() +" handleIceGatheringStateChange");
     // console.log(event);
   }
 
   // Handle Signal State Change
   handleSignalSteteChange(event) {
-    console.log("handleSignalStateChange");
+    console.log(currentTime() +" handleSignalStateChange");
     // console.log(event);
   }
 }
 
 function App() {
-  const signlaURL = "wss://bf92b43aca82.ngrok.io";
+  const signlaURL = "wss://8982cd8efc27.ngrok.io";
   const peerConnectionArray = useRef([]);
   const latestPeerConnectionCount = useRef(0);
   const state = useRef({
@@ -173,7 +177,7 @@ function App() {
         ownVideoElement: ownVideoElement,
       };
 	  client.on("connect", () => {
-        client.emit("data", encode({ type: "ready", data: {} }));
+        client.emit("data", encode({ type: "ready", data: {clientId:s4() + s4() + "-" + s4()}}));
       });
       client.on("data", handleMessage);
       ownVideoElement.srcObject = mediaDevices;
@@ -181,15 +185,17 @@ function App() {
     })();
   }, []);
 
-  const invite = async () => {
+  const invite = async (data) => {
     // Create PC &&   // Add handlers
-
+    const remoteId = data.data.clientId;
+    const clientId = s4() + s4() + "-" + s4();
     const pc = new PeerConnectionManager(
       state.current.client,
       state.current.localTracks,
-      state.current.mediaDevices
+      state.current.mediaDevices,
+      remoteId,
+      clientId
     );
-
     pc.addPeerConnectionHandler();
     pc.addLocalTracks();
     peerConnectionArray.current.push(pc);
@@ -202,13 +208,18 @@ function App() {
   };
 
   const handleIncomingCall = async (data) => {
-    console.log("state", state);
+    console.log(currentTime() +" state", state);
+    const remoteId = data.data.clientId;
+    const clientId = data.data.remoteId;
 
     const pc = new PeerConnectionManager(
       state.current.client,
       state.current.localTracks,
-      state.current.mediaDevices
+      state.current.mediaDevices,
+      remoteId,
+      clientId
     );
+    pc.pid = clientId;
     peerConnectionArray.current.push(pc);
     latestPeerConnectionCount.current += 1;
     pc.addPeerConnectionHandler();
@@ -224,7 +235,7 @@ function App() {
 
     sendData(
       "answer",
-      { sdp: pc.peerConnection.localDescription },
+      { sdp: pc.peerConnection.localDescription, clientId:clientId,remoteId:remoteId },
       state.current.client
     );
   };
@@ -247,7 +258,7 @@ function App() {
   const handleMessage = (message) => {
     const data = decode(message);
     const type = data.type;
-    console.log("Incoming Message called, type:", type);
+    console.log(currentTime() +" Incoming Message called, type:", type,data.data?.clientId,data.data?.remoteId);
 
     switch (type) {
       case "ready":
