@@ -15,87 +15,18 @@ class Peers {
   }
 }
 
-
 const addTracks = async (peerConnection) => {
   try {
     const mediaDevices = await navigator.mediaDevices.getUserMedia({
       audio: true,
-      video: false,
+      video: true,
     });
     const tracks = mediaDevices.getTracks();
-    tracks.forEach(track => peerConnection.addTrack(track, mediaDevices))
-    
+    tracks.forEach((track) => peerConnection.addTrack(track, mediaDevices));
   } catch (e) {
-    console.log("Failed to get media devices");
+    console.log("Failed to get media devices",e);
   }
 };
-
-// PEER CONNECTION HANDLERS
-function addPeerConnectionHandler(peerConnection) {
-  peerConnection.onicecandidate = handleIceCandidate;
-  peerConnection.ontrack = handleTrackEvent;
-  peerConnection.onnegotiationneeded = handleNegotiationNeeded;
-  peerConnection.oniceconnectionstatechange = handleIceConnectionStateChange;
-  peerConnection.onicegatheringstatechange = handleIceGatheringStateChange;
-  peerConnection.onsignalingstatechange = handleSignalSteteChange;
-}
-// Sending ICE Candidates
-function handleIceCandidate(event) {
-  console.log("handleIceCandidate");
-  // TODO: Check for the condition if error arises
-  // if (event.candidate)
-  //   sendData(
-  //     "newIceCandidate",
-  //     {
-  //       candidate: event.candidate,
-  //       clientId: this.pid,
-  //       remoteId: this.remoteId,
-  //     },
-  //     this.client
-  //   );
-}
-
-// Set Remote Media Track
-function handleTrackEvent(event) {
-  const newVideoElement = document.getElementById("video1");
-  newVideoElement.srcObject = event.streams[0];
-}
-
-// Handle Negotiation
-function handleNegotiationNeeded() {
-  console.log("handleNegotiationNeeded");
-  // (async () => {
-  //   const offer = await this.peerConnection.createOffer();
-  //   await this.peerConnection.setLocalDescription(offer);
-  //   sendData(
-  //     "offer",
-  //     {
-  //       sdp: this.peerConnection.localDescription,
-  //       clientId: this.pid,
-  //       remoteId: this.remoteId,
-  //     },
-  //     this.client
-  //   );
-  // })();
-}
-
-// Hanlde Ice Connection State Change
-function handleIceConnectionStateChange(event) {
-  console.log(" handleIceConnectionStateChange");
-  // console.log(event);
-}
-
-// Hanlde Ice Gathering State Change
-function handleIceGatheringStateChange(event) {
-  console.log(" handleIceGatheringStateChange");
-  // console.log(event);
-}
-
-// Handle Signal State Change
-function handleSignalSteteChange(event) {
-  console.log(" handleSignalStateChange");
-  // console.log(event);
-}
 
 class PeerConnectionManager {
   constructor(toClient, localTracks, mediaDevices, peerConnectionId) {
@@ -106,11 +37,99 @@ class PeerConnectionManager {
       mediaDevices,
       peerConnectionId
     );
+    const vidContainer = document.getElementById("vidContainer");
+    const newVideoElement = document.createElement("video");
+    vidContainer.appendChild(newVideoElement);
     this.peerConnection = new RTCPeerConnection();
     this.peerConnectionId = peerConnectionId;
     this.toClient = toClient;
     this.mediaDevices = mediaDevices;
     this.localTracks = localTracks;
+    this.newVideoElement = newVideoElement;
+
+
+    // bind methods
+    this.addPeerConnectionHandler = this.addPeerConnectionHandler.bind(this);
+    this.handleIceCandidate = this.handleIceCandidate.bind(this);
+    this.handleTrackEvent = this.handleTrackEvent.bind(this);
+    this.handleNegotiationNeeded = this.handleNegotiationNeeded.bind(this);
+    this.handleIceConnectionStateChange = this.handleIceConnectionStateChange.bind(
+      this
+    );
+    this.handleIceGatheringStateChange = this.handleIceGatheringStateChange.bind(
+      this
+    );
+    this.handleSignalSteteChange = this.handleSignalSteteChange.bind(this);
+  }
+
+  // PEER CONNECTION HANDLERS
+  addPeerConnectionHandler() {
+    this.peerConnection.onicecandidate = this.handleIceCandidate;
+    this.peerConnection.ontrack = this.handleTrackEvent;
+    this.peerConnection.onnegotiationneeded = this.handleNegotiationNeeded;
+    this.peerConnection.oniceconnectionstatechange = this.handleIceConnectionStateChange;
+    this.peerConnection.onicegatheringstatechange = this.handleIceGatheringStateChange;
+    this.peerConnection.onsignalingstatechange = this.handleSignalSteteChange;
+  }
+
+  handleIceCandidate(event) {
+    console.log("handleIceCandidate");
+    // TODO: Check for the condition if error arises
+    if (event.candidate)
+    socket.emit(
+      myEnum.RMSGS,
+      {
+        type: "newIceCandidate",
+        candidate: event.candidate,
+        from: myUUID,
+        to: this.peerConnectionId,
+      }
+      // ,
+      // this.client
+    );
+  }
+
+  // Set Remote Media Track
+  handleTrackEvent(event) {
+    this.newVideoElement.srcObject = event.streams[0];
+  }
+
+  // Handle Negotiation
+  handleNegotiationNeeded() {
+    console.log("handleNegotiationNeeded");
+    (async () => {
+      const offer = await this.peerConnection.createOffer();
+      await this.peerConnection.setLocalDescription(offer);
+      socket.emit(
+        myEnum.RMSGS,
+        {
+          type: "offer",
+          sdp: this.peerConnection.localDescription,
+          from: myUUID,
+          to: this.peerConnectionId,
+        }
+        // ,
+        // this.client
+      );
+    })();
+  }
+
+  // Hanlde Ice Connection State Change
+  handleIceConnectionStateChange(event) {
+    console.log(" handleIceConnectionStateChange");
+    // console.log(event);
+  }
+
+  // Hanlde Ice Gathering State Change
+  handleIceGatheringStateChange(event) {
+    console.log(" handleIceGatheringStateChange");
+    // console.log(event);
+  }
+
+  // Handle Signal State Change
+  handleSignalSteteChange(event) {
+    console.log(" handleSignalStateChange");
+    // console.log(event);
   }
 }
 
@@ -124,7 +143,7 @@ function uuidv4() {
 
 const myUUID = uuidv4();
 const options = {};
-const url = "ws://localhost:3002";
+const url = "ws://192.168.0.175:3002";
 const socket = io(url, options);
 const myEnum = Object.freeze({
   CACK: "CONNECTION_ACK",
@@ -132,6 +151,7 @@ const myEnum = Object.freeze({
   DID: "DISCONNECTED_ID",
   SALL: "SEND_MY_INITIAL_PRESENCE",
   RMSG: "WEB_RTC_MESSAGE",
+  RMSGS: "WEB_RTC_MESSAGE_SPE",
   RDY: "READY",
   INV: "INVITE",
 });
@@ -177,15 +197,19 @@ socket.on(myEnum.DID, (uuidv4) => {});
 
 const handleMessage = (message) => {
   const type = message.type;
+  console.log(message.type);
   switch (type) {
     case "ready":
       invite(message);
       break;
     case "offer":
+      handleIncomingCall(message);
       break;
     case "answer":
+      handleAnswer(message);
       break;
     case "newIceCandidate":
+      handleNewIceCandidate(message);
       break;
     default:
       console.log("No type matched in switch", type);
@@ -193,19 +217,66 @@ const handleMessage = (message) => {
   }
 };
 
-async function invite({ data }){
+const invite = ({ data }) => {
   console.log("Invite recieved", data);
   if (newId) {
     [...newId].map(async (uuid) => {
       const peerInfo = peer[uuid];
       const pc = new PeerConnectionManager(peerInfo.id, null, null, uuid);
-      addPeerConnectionHandler(pc.peerConnection);
+      pc.addPeerConnectionHandler();
       rtcpeerConnection[uuid] = pc;
       rtcpeerConnectionList.push(uuid);
       await addTracks(pc.peerConnection);
     });
-  
   }
 };
+
+const handleIncomingCall = async (data) => {
+  console.log("Offer Recieved", data);
+  const uuid = data.from;
+  const sdp = data.sdp;
+  const peerInfo = peer[uuid];
+  // console.log(uuid,sdp,peerInfo);
+  const pc = new PeerConnectionManager(peerInfo.id, null, null, uuid);
+  pc.addPeerConnectionHandler();
+  rtcpeerConnection[uuid] = pc;
+  rtcpeerConnectionList.push(uuid);
+  const remoteSessionDescription = new RTCSessionDescription(sdp);
+  await pc.peerConnection.setRemoteDescription(remoteSessionDescription);
+  await addTracks(pc.peerConnection);
+  const answer = await pc.peerConnection.createAnswer();
+  await pc.peerConnection.setLocalDescription(answer);
+  socket.emit(
+    myEnum.RMSGS,
+    {
+      type: "answer",
+      sdp: pc.peerConnection.localDescription,
+      from: myUUID,
+      to: uuid,
+    }
+    // ,
+    // this.client
+  );
+};
+
+const handleAnswer = async (data) => {
+  const uuid = data.from;
+  const answer = data.sdp;
+  const remoteDescription = new RTCSessionDescription(answer);
+  await rtcpeerConnection[uuid].peerConnection
+    .setRemoteDescription(remoteDescription)
+    .catch((error) => console.log("error in handling answer", error));
+};
+
+
+const handleNewIceCandidate = (data) => {
+  const uuid = data.from;
+  console.log(data)
+  const candidate = new RTCIceCandidate(data.candidate);
+  rtcpeerConnection[uuid].peerConnection
+  .addIceCandidate(candidate)
+  .catch("Error in adding ICE Candidate");
+};
+
 
 socket.on(myEnum.RMSG, handleMessage);

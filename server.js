@@ -12,6 +12,7 @@ const myEnum = Object.freeze({
   DID: "DISCONNECTED_ID",
   SALL: "SEND_MY_INITIAL_PRESENCE",
   RMSG: "WEB_RTC_MESSAGE",
+  RMSGS:"WEB_RTC_MESSAGE_SPE",
   RDY: "READY",
   INV:"INVITE",
 });
@@ -55,6 +56,11 @@ io.on("connection", (socket) => {
     console.log("Data from", socket.id, "\ndata is:", data);
     // socket.to(room).emit("data", data);
   });
+
+  socket.on(myEnum.RMSGS,(data)=>{
+    console.log(data);
+    socket.broadcast.to(sendUsers[data.to]).emit(myEnum.RMSG, data);
+  })
 });
 
 server.listen(3002);
