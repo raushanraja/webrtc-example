@@ -15,7 +15,7 @@ const getMediaAccess = async () => {
 };
 
 export default function App() {
-  const singalUrl = "wss://b68619b3216c.ngrok.io";
+  const singalUrl = "wss:////bitter-frog-76.loca.lt";
   const [clientId, setClientId] = useState(() => {
     function s4() {
       return Math.floor((1 + Math.random()) * 0x10000)
