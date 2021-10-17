@@ -57,11 +57,11 @@ class DataChannelManager {
     }
 
     onClosed() {
-        console.log(service + "DataChannel Closed")
+        console.log("DataChannel Closed")
     }
 
-    onMessage(event) {
-        console.log('dc got a message');
+    onMessage(message) {
+        console.log('dc got a message',message);
     }
 
     onBufferedAmountLow(event) {
@@ -145,6 +145,7 @@ function invite() {
 async function handleOffer(message) {
     const offer = message.message.message;
     const pc = new PeerConnectionManager();
+    pc.addEventListener();
     WSSManager.pc = pc;
     pc.peerConnection.setRemoteDescription(offer);
     const answer = await pc.peerConnection.createAnswer();
@@ -194,7 +195,7 @@ function onWSMessage(message) {
 
 function start() {
     console.log("Initial Call to dataChannel");
-    const url = "ws://localhost:3005";
+    const url = "wss://4c4b-117-214-61-247.ngrok.io";
     const wss = new WebSocket(url);
     WSSManager.wss = wss;
     WSSManager.addEventListener();
@@ -207,7 +208,7 @@ document.getElementById('ready').addEventListener('click', (e) => {
 
 document.getElementById('dcsend').addEventListener('click', (e) => {
     e.preventDefault;
-    console.log(WSSManager)
+    WSSManager.dc.dc.send("hello");
 })
 
 start();
