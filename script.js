@@ -7,27 +7,35 @@ const Message = function (type, message, status = true, error = false) {
         this.status = status,
         this.error = error,
         this.decoded = () => {
-            const [decoded, ...data] = this;
+            const { decoded, ...data } = this;
             return JSON.stringify(data);
         }
 }
 
+function onOpen() {
+    console.log("WS Connection Established")
+}
+
+function onClose() {
+    console.log("WS Connection Closed")
+}
 class WSSManager {
     static wss = null;
     static pc = null;
+    static dc = null;
     static addEventListener() {
         if (WSSManager.wss) {
-            WSSManager.wss.onopen = () => onOpen('WebSocket');
-            WSSManager.wss.onclose = () => onClose('WebSocket');
+            WSSManager.wss.onopen = onOpen;
+            WSSManager.wss.onclose = onClose;
             WSSManager.wss.onmessage = onWSMessage;
         }
     }
 }
 
-
 class DataChannelManager {
-    constructor(peerConnection, dataChannelLabel = 'datachannel-1', channel = null) {
+    constructor(peerConnection, dataChannelLabel = 'datachannel-1', channel) {
         this.dc = channel ?? peerConnection.createDataChannel(dataChannelLabel);
+        console.log(this.dc);
         this.addEventListener = this.addEventListener.bind(this);
         this.onOpen = this.onOpen.bind(this)
         this.onClosed = this.onClosed.bind(this)
@@ -103,61 +111,64 @@ class PeerConnectionManager {
     }
 
     handleDataChannel(event) {
+        console.log("handleDataChannelCalled");
         const dataChannel = new DataChannelManager(null, null, event.channel);
+        dataChannel.addEventListener();
+        WSSManager.dc = dataChannel;
         dataChannel.addEventListener();
 
     }
     handleIceconnectionstatechange(event) {
-        console.log("handleIceconnectionstatechange")
+        console.log("handleIceconnectionstatechange:", event)
     }
 
     handleIcegatheringstatechange(event) {
-        console.log("handleIcegatheringstatechange")
+        console.log("handleIcegatheringstatechange:", event)
     }
 
     handleSignalingstatechange(event) {
-        console.log("handleSignalingstatechange")
+        console.log("handleSignalingstatechange:", event)
     }
 }
 
-
-
-
-function onOpen(service) {
-    console.log(service + " Connection Established")
-}
-
-function onClosed(service) {
-    console.log(service + " Connection Closed")
-}
 
 function invite() {
     const pc = new PeerConnectionManager();
     pc.addEventListener();
     const dataChannel = new DataChannelManager(pc.peerConnection);
+    console.log(dataChannel)
+    dataChannel.addEventListener();
     WSSManager.pc = pc;
+    WSSManager.dc = dataChannel;
 }
 
 async function handleOffer(message) {
-    const offer = message.message.offer;
+    const offer = message.message.message;
     const pc = new PeerConnectionManager();
+    WSSManager.pc = pc;
     pc.peerConnection.setRemoteDescription(offer);
-    const answer = pc.peerConnection.createAnswer();
+    const answer = await pc.peerConnection.createAnswer();
     await pc.peerConnection.setLocalDescription(answer);
     const answer_message = new Message('answer', { 'answer': answer });
     WSSManager.wss.send(answer_message.decoded());
 }
 
 async function handleAnswer(message) {
-    const answer = message.message.answer;
+    const answer = message.message.message;
     const remoteDescription = new RTCSessionDescription(answer);
     WSSManager.pc.peerConnection.setRemoteDescription(remoteDescription);
 }
 
+function handleNewIceCandidate(message){
+    const newIceCandidate = message.message.message
+    console.log(newIceCandidate);
+    WSSManager.pc.peerConnection.addIceCandidate(newIceCandidate);
+}
+
 function onWSMessage(message) {
-    const encoded_message = encode(message);
+    const encoded_message = encode(message.data);
     const type = encoded_message['type'];
-    console.log("Got Message");
+    console.log("Got Message:", type);
 
     switch (type) {
         case 'ready':
@@ -173,7 +184,7 @@ function onWSMessage(message) {
             break;
 
         case 'newIceCandidate':
-
+            handleNewIceCandidate(encoded_message)
             break;
 
         default:
@@ -181,13 +192,22 @@ function onWSMessage(message) {
     }
 }
 
- function start() {
+function start() {
     console.log("Initial Call to dataChannel");
-    const url = "ws://localhost:8005";
+    const url = "ws://localhost:3005";
     const wss = new WebSocket(url);
     WSSManager.wss = wss;
     WSSManager.addEventListener();
 }
 
+document.getElementById('ready').addEventListener('click', (e) => {
+    e.preventDefault;
+    WSSManager.wss.send(new Message('ready', 'ready').decoded())
+})
+
+document.getElementById('dcsend').addEventListener('click', (e) => {
+    e.preventDefault;
+    console.log(WSSManager)
+})
 
 start();
