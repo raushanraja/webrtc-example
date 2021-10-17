@@ -62,6 +62,10 @@ class DataChannelManager {
 
     onMessage(message) {
         console.log('dc got a message', message);
+        const image = document.createElement('img');
+        image.width = 600;
+        image.src = URL.createObjectURL(message.data);
+        document.getElementById('preview').appendChild(image)
     }
 
     onBufferedAmountLow(event) {
@@ -186,7 +190,7 @@ function onWSMessage(message) {
 
 function start() {
     console.log("Initial Call to dataChannel");
-    const url = "wss://4c4b-117-214-61-247.ngrok.io";
+    const url = "wss://9911-117-214-61-247.ngrok.io";
     const wss = new WebSocket(url);
     WSSManager.wss = wss;
     WSSManager.addEventListener();
@@ -206,8 +210,7 @@ document.getElementById('file').addEventListener('change', (e) => {
     e.preventDefault;
     console.log(document.getElementById('file').value);
     const image = document.createElement('img');
-    image.height = 400;
-    image.width = 400;
+    image.width = 620;
     image.src = URL.createObjectURL(document.getElementById('file').files[0]);
     document.getElementById('preview').appendChild(image)
 })
