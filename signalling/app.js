@@ -74,26 +74,22 @@ const handleIncomingMessage = (rec_message, rec_encoded_message, client) => {
 
     switch (type) {
         case 'ready':
-            const data = new Message(type, send_message, true, false);
-            client.sendToOthers(data.decoded());
+            client.sendToOthers(new Message(type, send_message, true, false).decoded());
             break;
 
         case 'offer':
             send_message['message'] = rec_encoded_message['message']['offer']
-            const data = new Message(type, send_message, true, false);
-            client.sendToOthers(data.decoded());
+            client.sendToOthers(new Message(type, send_message, true, false).decoded());
             break;
 
         case 'answer':
             send_message['message'] = rec_encoded_message['message']['answer']
-            const data = new Message(type, send_message, true, false);
-            client.sendToOthers(data.decoded());
+            client.sendToOthers(new Message(type, send_message, true, false).decoded());
             break;
 
         case 'newIceCandidate':
             send_message['message'] = rec_encoded_message['message']['newIceCandidate']
-            const data = new Message(type, send_message, true, false);
-            client.sendToOthers(data.decoded());
+            client.sendToOthers(new Message(type, send_message, true, false).decoded());
             break;
         default:
             break;
