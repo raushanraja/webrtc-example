@@ -61,7 +61,7 @@ class DataChannelManager {
     }
 
     onMessage(message) {
-        console.log('dc got a message',message);
+        console.log('dc got a message', message);
     }
 
     onBufferedAmountLow(event) {
@@ -81,18 +81,16 @@ class PeerConnectionManager {
         this.handleIceCandidate = this.handleIceCandidate.bind(this);
         this.handleNegotiationNeeded = this.handleNegotiationNeeded.bind(this);
         this.handleDataChannel = this.handleDataChannel.bind(this);
-        this.handleIceconnectionstatechange = this.handleIceconnectionstatechange.bind(this);
-        this.handleIcegatheringstatechange = this.handleIcegatheringstatechange.bind(this);
-        this.handleSignalingstatechange = this.handleSignalingstatechange.bind(this);
+        this.handleStatechange = this.handleStatechange.bind(this);
     }
 
     addEventListener() {
         this.peerConnection.onicecandidate = this.handleIceCandidate;
         this.peerConnection.onnegotiationneeded = this.handleNegotiationNeeded;
         this.peerConnection.ondatachannel = this.handleDataChannel;
-        this.peerConnection.oniceconnectionstatechange = this.handleIceconnectionstatechange
-        this.peerConnection.onicegatheringstatechange = this.handleIcegatheringstatechange
-        this.peerConnection.onsignalingstatechange = this.handleSignalingstatechange
+        this.peerConnection.oniceconnectionstatechange = this.handleStatechange
+        this.peerConnection.onicegatheringstatechange = this.handleStatechange
+        this.peerConnection.onsignalingstatechange = this.handleStatechange
     }
 
     async handleNegotiationNeeded() {
@@ -118,17 +116,10 @@ class PeerConnectionManager {
         dataChannel.addEventListener();
 
     }
-    handleIceconnectionstatechange(event) {
+    handleStatechange(event) {
         console.log("handleIceconnectionstatechange:", event)
     }
 
-    handleIcegatheringstatechange(event) {
-        console.log("handleIcegatheringstatechange:", event)
-    }
-
-    handleSignalingstatechange(event) {
-        console.log("handleSignalingstatechange:", event)
-    }
 }
 
 
@@ -160,7 +151,7 @@ async function handleAnswer(message) {
     WSSManager.pc.peerConnection.setRemoteDescription(remoteDescription);
 }
 
-function handleNewIceCandidate(message){
+function handleNewIceCandidate(message) {
     const newIceCandidate = message.message.message
     console.log(newIceCandidate);
     WSSManager.pc.peerConnection.addIceCandidate(newIceCandidate);
@@ -208,7 +199,17 @@ document.getElementById('ready').addEventListener('click', (e) => {
 
 document.getElementById('dcsend').addEventListener('click', (e) => {
     e.preventDefault;
-    WSSManager.dc.dc.send("hello");
+    WSSManager.dc.dc.send(document.getElementById('file').files[0]);
+})
+
+document.getElementById('file').addEventListener('change', (e) => {
+    e.preventDefault;
+    console.log(document.getElementById('file').value);
+    const image = document.createElement('img');
+    image.height = 400;
+    image.width = 400;
+    image.src = URL.createObjectURL(document.getElementById('file').files[0]);
+    document.getElementById('preview').appendChild(image)
 })
 
 start();
